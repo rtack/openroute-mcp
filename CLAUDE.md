@@ -90,10 +90,12 @@ Both already correctly configured — no setup needed. `gh repo view
 rtack/openroute-mcp --json parent` confirms `isFork: true`,
 `parent: vemonet/openroute-mcp`.
 
-As of 2026-09-13: `origin/main` and local `main` are identical, and both
-sit exactly one commit ahead of `upstream/main`
-(`cacb029 fix: pin mcp SDK below v2 to avoid breaking fastmcp rework`) — a
-fork-only fix not yet sent upstream.
+As of 2026-09-13: `origin/main` and local `main` are identical, sitting two
+commits ahead of `upstream/main` — `cacb029` (fork-only SDK-pin fix, not yet
+sent upstream) and this `CLAUDE.md`'s own addition (a fork-only doc commit,
+staying on `main`/`origin` rather than moving to `local-dev` — see the
+Branching section above for why this repo can't push a true "pure mirror"
+`main`).
 
 ## Worktree Isolation Required for All Work
 
@@ -107,24 +109,41 @@ checkout by mistake.
 
 ## Branching & terminology: "deploy" vs PR
 
-Simpler than `google-mcp` — there is no `local-dev` integration branch and
-no separate build/daemon-restart step, because "the live server" *is*
-whatever commit sits on `origin/main` (see mechanics above).
+**Deliberate deviation from google-mcp's three-branch model — `main` is not,
+and cannot be, a pure upstream mirror here.** Elsewhere, `local-dev` exists
+so `main` can stay a pure, cleanly-fast-forwardable copy of `upstream/main`
+while local-only work accumulates elsewhere. That reasoning is orthogonal to
+daemon-vs-stdio architecture (a mistake made and corrected on several other
+repos 2026-09-13) — but here it runs into a *different*, genuinely
+structural constraint: `uvx` resolves against `origin`'s default branch
+(`main`) directly, with no separate build/deploy step to promote anything
+onto it (see mechanics above). If `main` were reset to a bare
+`upstream/main` mirror, the live tool would lose `cacb029` (the SDK-pin fix
+that keeps it working at all) the next reconnect. So `main` here plays a
+dual role — nominally the default branch, but functionally the thing other
+repos call `local-dev` — and there is no separate "pure mirror" branch to
+match `upstream/main` against with a plain `diff`.
 
-- **`main`** — normally a mirror of `upstream/main` plus any fork-only
-  patches not yet sent upstream (currently just `cacb029`). Kept in sync
-  with `origin/main` (push immediately after any local `main` change —
-  there's no separate fork-sync step to forget, unlike `google-mcp`'s
-  three-branch model).
-- **`feat/<name>`** — one per feature/fix, branched from `main` inside a
-  worktree, pushed to `origin` once ready.
-- **"Deploy"** = merge a `feat/<name>` branch into `main` and `git push
-  origin main`. That alone makes the change live for the *next* MCP
-  reconnect (see mechanics above) — no daemon restart, no rebuild step.
-  Gate: tests/lint clean (see Testing below); no code review required for
-  pushing to Raphael's own fork.
+- **`main`** — the fork's default branch *and* the actual deploy target.
+  Normally `upstream/main` plus any fork-only patches not yet sent upstream
+  (currently just `cacb029`). Kept in sync with `origin/main` (push
+  immediately after any local `main` change).
+- **`local-dev`** — exists for workflow parity with every other repo
+  (`feat/<name>` branches are cut from here, not `main`), **not** for the
+  "never pushed, keeps main pure" guarantee those repos have — that
+  guarantee is structurally unavailable here. In practice `local-dev` and
+  `main` are usually the same commit; `local-dev` only gets ahead of `main`
+  during in-progress work not yet ready to deploy.
+- **`feat/<name>`** — one per feature/fix, branched from `local-dev` inside
+  a worktree, pushed to `origin` once ready.
+- **"Deploy"** = merge a `feat/<name>` branch into `local-dev`, fast-forward
+  `local-dev` into `main` (`git checkout main && git merge --ff-only
+  local-dev`), and `git push origin main`. That alone makes the change live
+  for the *next* MCP reconnect (see mechanics above) — no daemon restart, no
+  rebuild step. Gate: tests/lint clean (see Testing below); no code review
+  required for pushing to Raphael's own fork.
 - **PR** = a GitHub pull request opened against `vemonet/openroute-mcp`
-  (the upstream project), for a fix/feature worth sending back. Gate:
+  (the upstream project), from the `feat/<name>` branch directly. Gate:
   everything a deploy requires, plus code review (e.g. `/code-review` on
   the branch diff) and the `pr-approval-gate` skill's fresh, explicit,
   in-the-moment approval — never open one preemptively "since it seems
@@ -137,12 +156,13 @@ git fetch upstream main
 git log --oneline main..upstream/main   # anything printed means it moved
 ```
 
-If it moved: fast-forward local `main`
-(`git update-ref refs/heads/main refs/remotes/upstream/main` — safe as
-long as `main` carries no unpushed fork-only commits beyond what's already
-on `origin`) and push to `origin` (`git push origin main`) so the fork's
-GitHub `main` — the thing `uvx` actually resolves against — doesn't go
-stale relative to what Raphael thinks is current.
+If it moved: rebase `main` onto the new `upstream/main` (`git rebase
+upstream/main` from `main` — replays `main`'s fork-only commits like
+`cacb029` on top; there's no clean fast-forward here since `main` always
+carries at least those fork-only patches, unlike the pure-mirror repos),
+push the rebased `main` to `origin` (`git push origin main --force-with-lease`
+— a rebase always requires this, not a plain push), then rebase `local-dev`
+onto the updated `main` too.
 
 ## Testing & Linting (verified 2026-09-13, real commands actually run)
 
