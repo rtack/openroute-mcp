@@ -3,7 +3,7 @@ import base64
 import json
 import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from xml.dom.minidom import parseString
 
@@ -153,8 +153,8 @@ async def create_route_from_to(
         # Generate image and HTML for the route
         img_filename = f"{route_filename}.png"
         html_filename = f"{route_filename}.html"
-        img_filepath = gpx_to_img(response.text, img_filename)
-        html_filepath = gpx_to_html(response.text, html_filename)
+        img_filepath = gpx_to_img(response.text, img_filename, settings.data_folder)
+        html_filepath = gpx_to_html(response.text, html_filename, settings.data_folder)
 
         # Add PNG image if generated
         if not settings.no_img and img_filepath:
@@ -402,11 +402,25 @@ def scenic_biking_route(from_location: str, to_location: str) -> str:
     return f"Create a mountain biking route from {from_location} to {to_location}, try to go through known pleasant trails, and pass by interesting points of interest on the way"
 
 
+def default_data_folder() -> str:
+    """Default folder for generated route files.
+
+    An absolute, XDG-style cache location — never a path relative to the
+    process's current working directory. MCP server subprocesses inherit
+    whatever directory the launching client happens to be rooted in as
+    their cwd, so a relative default here would leak a
+    `data/generated_routes/` directory into whatever unrelated repo/folder
+    a session was started from.
+    """
+    cache_home = os.getenv("XDG_CACHE_HOME", os.path.join(os.path.expanduser("~"), ".cache"))
+    return os.path.join(cache_home, "openroute-mcp", "generated_routes")
+
+
 @dataclass
 class AppSettings:
     openroute_api: str = "https://api.openrouteservice.org"
     openroute_api_key: str = os.getenv("OPENROUTESERVICE_API_KEY", "")
-    data_folder: str = "data/generated_routes"
+    data_folder: str = field(default_factory=default_data_folder)
     search_results_limit: int = 10
     no_save: bool = False
     no_img: bool = False
@@ -437,7 +451,11 @@ def cli() -> None:
         help="OpenRouteService API key (default: taken from env var OPENROUTESERVICE_API_KEY)",
     )
     parser.add_argument(
-        "--data-folder", type=str, default="data/generated_routes", help="Folder to save generated routes"
+        "--data-folder",
+        type=str,
+        default=default_data_folder(),
+        help="Folder to save generated routes (default: an XDG-style cache dir under "
+        "$XDG_CACHE_HOME or ~/.cache, not a path relative to the current directory)",
     )
     parser.add_argument(
         "--no-save",

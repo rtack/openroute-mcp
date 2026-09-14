@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any
 
 import folium
@@ -50,7 +51,7 @@ def process_location_result(result: dict[str, Any], rank: int) -> LocationResult
     )
 
 
-def gpx_to_img(gpx_str: str, output_file: str) -> str:
+def gpx_to_img(gpx_str: str, output_file: str, output_folder: str) -> str:
     """Convert a GPX string to a PNG image of the route using `staticmap`."""
     gpx = gpxpy.parse(gpx_str)
     coords = []
@@ -75,12 +76,12 @@ def gpx_to_img(gpx_str: str, output_file: str) -> str:
 
     # Render image and save to file
     img = m.render()
-    output_path = f"data/generated_routes/{output_file}"
+    output_path = os.path.join(output_folder, output_file)
     img.save(output_path)
     return output_path
 
 
-def gpx_to_html(gpx_str: str, output_file: str) -> str:
+def gpx_to_html(gpx_str: str, output_file: str, output_folder: str) -> str:
     """Plot a GPX route using `folium` and save as an HTML file."""
     gpx = gpxpy.parse(gpx_str)
     # Collect all route <rte> / track <trk> elements
@@ -122,6 +123,6 @@ def gpx_to_html(gpx_str: str, output_file: str) -> str:
     # </style>
     # """
     #     m.add_child(folium.Element(css))
-    output_path = f"data/generated_routes/{output_file}"
+    output_path = os.path.join(output_folder, output_file)
     m.save(output_path)
     return output_path
